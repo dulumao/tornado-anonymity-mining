@@ -8,4 +8,6 @@ interface IVerifier {
   function verifyProof(bytes calldata proof, uint256[7] calldata input) external view returns (bool);
 
   function verifyProof(bytes calldata proof, uint256[12] calldata input) external view returns (bool);
+
+  function verifyProof(bytes calldata proof, uint256[3 + 128*3] calldata input) external view returns (bool);
 }

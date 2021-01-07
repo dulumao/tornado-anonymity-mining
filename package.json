@@ -23,7 +23,8 @@
     "circuit:reward": "scripts/buildCircuit.sh Reward",
     "circuit:withdraw": "scripts/buildCircuit.sh Withdraw",
     "circuit:treeUpdate": "scripts/buildCircuit.sh TreeUpdate",
-    "circuit": "mkdir -p build/circuits && yarn circuit:reward && yarn circuit:withdraw && yarn circuit:treeUpdate"
+    "circuit:batchTreeUpdate": "scripts/buildCircuit.sh BatchTreeUpdate",
+    "circuit": "mkdir -p build/circuits && yarn circuit:reward && yarn circuit:withdraw && yarn circuit:treeUpdate && yarn circuit:batchTreeUpdate"
   },
   "devDependencies": {
     "@openzeppelin/contracts": "^3.1.0",

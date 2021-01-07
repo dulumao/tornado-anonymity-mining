@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 npx circom circuits/$1.circom -o build/circuits/$1.json
 npx snarkjs info -c build/circuits/$1.json
 zkutil setup -c build/circuits/$1.json -p build/circuits/$1.params
