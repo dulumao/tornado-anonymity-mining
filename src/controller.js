@@ -324,6 +324,56 @@ class Controller {
       args,
     }
   }
+
+  async batchTreeUpdate(tree, events) {
+    const batchSize = await this.tornadoTreesContract.BATCH_SIZE()
+    const batchHeight = Math.log2(batchSize)
+    if (events.length !== batchSize) {
+      throw new Error('events length doesn\'t match the batch size')
+    }
+
+    const oldRoot = tree.root()
+    const leaves = events.map((e) => poseidonHash([e.instance, e.hash, e.blockNumber]))
+    tree.batchInsert(leaves)
+    const newRoot = tree.root()
+    let { pathElements, pathIndices } = tree.path(tree.elements().length - 1)
+    pathElements = pathElements.slice(0, -batchHeight)
+    pathIndices = bitsToNumber(pathIndices.slice(0, -batchHeight))
+
+    const input = {
+      oldRoot,
+      newRoot,
+      pathIndices,
+      pathElements,
+      instances: events.map((e) => e.instance),
+      hashes: events.map((e) => e.hash),
+      blocks: events.map((e) => e.block),
+    }
+
+    const proofData = await websnarkUtils.genWitnessAndProve(
+      this.groth16,
+      input,
+      this.provingKeys.batchTreeUpdateCircuit,
+      this.provingKeys.batchTreeUpdateProvingKey,
+    )
+    const { proof } = websnarkUtils.toSolidityInput(proofData)
+
+    const args = {
+      oldRoot: toFixedHex(input.oldRoot),
+      newRoot: toFixedHex(input.newRoot),
+      pathIndices: toFixedHex(input.pathIndices),
+      events: events.map((e) => ({
+        instance: toFixedHex(e.instance, 20),
+        hash: toFixedHex(e.hash),
+        block: toFixedHex(e.block),
+      })),
+    }
+
+    return {
+      proof,
+      args,
+    }
+  }
 }
 
 module.exports = Controller
