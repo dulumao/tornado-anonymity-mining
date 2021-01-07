@@ -326,10 +326,9 @@ class Controller {
   }
 
   async batchTreeUpdate(tree, events) {
-    const batchSize = await this.tornadoTreesContract.BATCH_SIZE()
-    const batchHeight = Math.log2(batchSize)
-    if (events.length !== batchSize) {
-      throw new Error('events length doesn\'t match the batch size')
+    const batchHeight = await this.tornadoTreesContract.CHUNK_TREE_HEIGHT()
+    if (events.length !== 1 << batchHeight) {
+      throw new Error('events length does not match the batch size')
     }
 
     const oldRoot = tree.root()

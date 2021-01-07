@@ -13,7 +13,8 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
   address public immutable tornadoProxy;
   IVerifier public immutable treeUpdateVerifier;
 
-  uint256 public constant CHUNK_SIZE = 128;
+  uint256 public constant CHUNK_TREE_HEIGHT = 7;
+  uint256 public constant CHUNK_SIZE = 2 ** CHUNK_TREE_HEIGHT;
 
   bytes32[] public deposits;
   uint256 public lastProcessedDepositLeaf;
@@ -59,17 +60,19 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     bytes calldata _depositProof,
     bytes32 _previousDepositRoot,
     bytes32 _newDepositRoot,
+    uint256 _depositPathIndices,
     TreeLeaf[] calldata _deposits,
     bytes calldata _withdrawalProof,
     bytes32 _previousWithdrawalRoot,
     bytes32 _newWithdrawalRoot,
+    uint256 _withdrawalPathIndices,
     TreeLeaf[] calldata _withdrawals
   ) external {
     if (_deposits.length > 0) {
-      updateDepositTree(_depositProof, _previousDepositRoot, _newDepositRoot, _deposits);
+      updateDepositTree(_depositProof, _previousDepositRoot, _newDepositRoot, _depositPathIndices, _deposits);
     }
     if (_withdrawals.length > 0) {
-      updateWithdrawalTree(_withdrawalProof, _previousWithdrawalRoot, _newWithdrawalRoot, _withdrawals);
+      updateWithdrawalTree(_withdrawalProof, _previousWithdrawalRoot, _newWithdrawalRoot, _withdrawalPathIndices, _withdrawals);
     }
   }
 
@@ -78,28 +81,29 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     bytes calldata _proof,
     bytes32 _previousRoot,
     bytes32 _newRoot,
+    uint256 _pathIndices,
     TreeLeaf[] calldata _events
   ) public {
+    uint256 offset = lastProcessedDepositLeaf;
     require(_events.length == CHUNK_SIZE, "Incorrect deposit array size");
     require(_previousRoot == depositRoot, "Incorrect deposit array size");
+    require(_pathIndices == offset >> CHUNK_TREE_HEIGHT, "Incorrect insert index");
 
-    uint256 offset = lastProcessedDepositLeaf;
     uint256[3 + 3 * CHUNK_SIZE] memory args;
-    args[0] = lastProcessedDepositLeaf;
-    args[1] = uint256(_previousRoot);
-    args[2] = uint256(_newRoot);
-    args[3] = 1; // todo index
+    args[0] = uint256(_previousRoot);
+    args[1] = uint256(_newRoot);
+    args[2] = _pathIndices; // TODO
     for (uint256 i = 0; i < CHUNK_SIZE; i++) {
       bytes32 leafHash = keccak256(abi.encode(_events[i].instance, _events[i].hash, _events[i].block));
       require(deposits[offset + i] == leafHash, "Incorrect deposit");
-      args[3 + 3 * i] = uint256(_events[i].instance);
-      args[4 + 3 * i] = uint256(_events[i].hash);
-      args[5 + 3 * i] = uint256(_events[i].block);
+      args[3 + 0 * CHUNK_SIZE + i] = uint256(_events[i].instance);
+      args[3 + 1 * CHUNK_SIZE + i] = uint256(_events[i].hash);
+      args[3 + 2 * CHUNK_SIZE + i] = uint256(_events[i].block);
       emit DepositData(_events[i].instance, _events[i].hash, _events[i].block, offset + i);
       delete deposits[offset + i];
     }
 
-    treeUpdateVerifier.verifyProof(_proof, args);
+    require(treeUpdateVerifier.verifyProof(_proof, args), "Invalid deposit tree update proof");
 
     depositRoot = _newRoot;
     lastProcessedDepositLeaf = offset + CHUNK_SIZE;
@@ -109,33 +113,35 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     bytes calldata _proof,
     bytes32 _previousRoot,
     bytes32 _newRoot,
+    uint256 _pathIndices,
     TreeLeaf[] calldata _events
   ) public {
+    uint256 offset = lastProcessedWithdrawalLeaf;
     require(_events.length == CHUNK_SIZE, "Incorrect withdrawal array size");
     require(_previousRoot == withdrawalRoot, "Incorrect withdrawal array size");
+    require(_pathIndices == offset >> CHUNK_TREE_HEIGHT, "Incorrect insert index");
 
-    uint256 offset = lastProcessedWithdrawalLeaf;
     uint256[3 + 3 * CHUNK_SIZE] memory args;
-    args[0] = lastProcessedWithdrawalLeaf;
-    args[1] = uint256(_previousRoot);
-    args[2] = uint256(_newRoot);
-    args[3] = 1; // todo index
+    args[0] = uint256(_previousRoot);
+    args[1] = uint256(_newRoot);
+    args[2] = lastProcessedWithdrawalLeaf >> CHUNK_TREE_HEIGHT; // TODO
     for (uint256 i = 0; i < CHUNK_SIZE; i++) {
       bytes32 leafHash = keccak256(abi.encode(_events[i].instance, _events[i].hash, _events[i].block));
       require(withdrawals[offset + i] == leafHash, "Incorrect withdrawal");
-      args[3 + 3 * i] = uint256(_events[i].instance);
-      args[4 + 3 * i] = uint256(_events[i].hash);
-      args[5 + 3 * i] = uint256(_events[i].block);
+      args[3 + 0 * CHUNK_SIZE + i] = uint256(_events[i].instance);
+      args[3 + 1 * CHUNK_SIZE + i] = uint256(_events[i].hash);
+      args[3 + 2 * CHUNK_SIZE + i] = uint256(_events[i].block);
       emit WithdrawalData(_events[i].instance, _events[i].hash, _events[i].block, offset + i);
       delete withdrawals[offset + i];
     }
 
-    treeUpdateVerifier.verifyProof(_proof, args);
+    require(treeUpdateVerifier.verifyProof(_proof, args), "Invalid withdrawal tree update proof");
 
     withdrawalRoot = _newRoot;
     lastProcessedWithdrawalLeaf = offset + CHUNK_SIZE;
   }
 
+  // todo store previous root
   function validateRoots(bytes32 _depositRoot, bytes32 _withdrawalRoot) public view {
     require(depositRoot == _depositRoot, "Incorrect deposit tree root");
     require(withdrawalRoot == _withdrawalRoot, "Incorrect withdrawal tree root");
