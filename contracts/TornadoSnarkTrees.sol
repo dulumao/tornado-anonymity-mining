@@ -56,26 +56,6 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     withdrawals.push(keccak256(abi.encode(_instance, _nullifier, blockNumber())));
   }
 
-  function updateRoots(
-    bytes calldata _depositProof,
-    bytes32 _previousDepositRoot,
-    bytes32 _newDepositRoot,
-    uint256 _depositPathIndices,
-    TreeLeaf[] calldata _deposits,
-    bytes calldata _withdrawalProof,
-    bytes32 _previousWithdrawalRoot,
-    bytes32 _newWithdrawalRoot,
-    uint256 _withdrawalPathIndices,
-    TreeLeaf[] calldata _withdrawals
-  ) external {
-    if (_deposits.length > 0) {
-      updateDepositTree(_depositProof, _previousDepositRoot, _newDepositRoot, _depositPathIndices, _deposits);
-    }
-    if (_withdrawals.length > 0) {
-      updateWithdrawalTree(_withdrawalProof, _previousWithdrawalRoot, _newWithdrawalRoot, _withdrawalPathIndices, _withdrawals);
-    }
-  }
-
   // todo !!! ensure that during migration the tree is filled evenly
   function updateDepositTree(
     bytes calldata _proof,
