@@ -8,9 +8,10 @@ import "./interfaces/ITornadoTrees.sol";
 import "./interfaces/IVerifier.sol";
 
 contract TornadoTrees is ITornadoTrees, EnsResolve {
+  address public immutable governance;
   bytes32 public depositRoot;
   bytes32 public withdrawalRoot;
-  address public immutable tornadoProxy;
+  address public tornadoProxy;
   IVerifier public immutable treeUpdateVerifier;
 
   uint256 public constant CHUNK_TREE_HEIGHT = 7;
@@ -36,12 +37,19 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     _;
   }
 
+  modifier onlyGovernance() {
+    require(msg.sender == governance, "Only governance can perform this action");
+    _;
+  }
+
   constructor(
+    bytes32 _governance,
     bytes32 _tornadoProxy,
     bytes32 _treeUpdateVerifier,
     bytes32 _depositRoot,
     bytes32 _withdrawalRoot
   ) public {
+    governance = resolve(_governance);
     tornadoProxy = resolve(_tornadoProxy);
     treeUpdateVerifier = IVerifier(resolve(_treeUpdateVerifier));
     depositRoot = _depositRoot;
@@ -141,6 +149,10 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     for (uint256 i = 0; i < count; i++) {
       _withdrawals[i] = withdrawals[lastProcessedWithdrawalLeaf + i];
     }
+  }
+
+  function setTornadoProxyContract(address _tornadoProxy) external onlyGovernance {
+    tornadoProxy = _tornadoProxy;
   }
 
   function blockNumber() public view virtual returns (uint256) {
