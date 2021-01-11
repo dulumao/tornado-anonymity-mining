@@ -4,15 +4,18 @@ pragma solidity ^0.6.0;
 pragma experimental ABIEncoderV2;
 
 import "torn-token/contracts/ENS.sol";
-import "./utils/OwnableMerkleTree.sol";
 import "./interfaces/ITornadoTrees.sol";
-import "./interfaces/IHasher.sol";
+import "./interfaces/IVerifier.sol";
 
 contract TornadoTrees is ITornadoTrees, EnsResolve {
-  OwnableMerkleTree public immutable depositTree;
-  OwnableMerkleTree public immutable withdrawalTree;
-  IHasher public immutable hasher;
-  address public immutable tornadoProxy;
+  address public immutable governance;
+  bytes32 public depositRoot;
+  bytes32 public withdrawalRoot;
+  address public tornadoProxy;
+  IVerifier public immutable treeUpdateVerifier;
+
+  uint256 public constant CHUNK_TREE_HEIGHT = 7;
+  uint256 public constant CHUNK_SIZE = 2**CHUNK_TREE_HEIGHT;
 
   bytes32[] public deposits;
   uint256 public lastProcessedDepositLeaf;
@@ -34,16 +37,23 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     _;
   }
 
+  modifier onlyGovernance() {
+    require(msg.sender == governance, "Only governance can perform this action");
+    _;
+  }
+
   constructor(
+    bytes32 _governance,
     bytes32 _tornadoProxy,
-    bytes32 _hasher2,
-    bytes32 _hasher3,
-    uint32 _levels
+    bytes32 _treeUpdateVerifier,
+    bytes32 _depositRoot,
+    bytes32 _withdrawalRoot
   ) public {
+    governance = resolve(_governance);
     tornadoProxy = resolve(_tornadoProxy);
-    hasher = IHasher(resolve(_hasher3));
-    depositTree = new OwnableMerkleTree(_levels, IHasher(resolve(_hasher2)));
-    withdrawalTree = new OwnableMerkleTree(_levels, IHasher(resolve(_hasher2)));
+    treeUpdateVerifier = IVerifier(resolve(_treeUpdateVerifier));
+    depositRoot = _depositRoot;
+    withdrawalRoot = _withdrawalRoot;
   }
 
   function registerDeposit(address _instance, bytes32 _commitment) external override onlyTornadoProxy {
@@ -54,60 +64,75 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     withdrawals.push(keccak256(abi.encode(_instance, _nullifier, blockNumber())));
   }
 
-  function updateRoots(TreeLeaf[] calldata _deposits, TreeLeaf[] calldata _withdrawals) external {
-    if (_deposits.length > 0) updateDepositTree(_deposits);
-    if (_withdrawals.length > 0) updateWithdrawalTree(_withdrawals);
-  }
-
-  function updateDepositTree(TreeLeaf[] calldata _deposits) public {
-    bytes32[] memory leaves = new bytes32[](_deposits.length);
+  // todo !!! ensure that during migration the tree is filled evenly
+  function updateDepositTree(
+    bytes calldata _proof,
+    bytes32 _previousRoot,
+    bytes32 _newRoot,
+    uint256 _pathIndices,
+    TreeLeaf[] calldata _events
+  ) public {
     uint256 offset = lastProcessedDepositLeaf;
+    require(_events.length == CHUNK_SIZE, "Incorrect deposit array size");
+    require(_previousRoot == depositRoot, "Incorrect deposit array size");
+    require(_pathIndices == offset >> CHUNK_TREE_HEIGHT, "Incorrect insert index");
 
-    for (uint256 i = 0; i < _deposits.length; i++) {
-      TreeLeaf memory deposit = _deposits[i];
-      bytes32 leafHash = keccak256(abi.encode(deposit.instance, deposit.hash, deposit.block));
+    uint256[3 + 3 * CHUNK_SIZE] memory args;
+    args[0] = uint256(_previousRoot);
+    args[1] = uint256(_newRoot);
+    args[2] = _pathIndices; // TODO
+    for (uint256 i = 0; i < CHUNK_SIZE; i++) {
+      bytes32 leafHash = keccak256(abi.encode(_events[i].instance, _events[i].hash, _events[i].block));
       require(deposits[offset + i] == leafHash, "Incorrect deposit");
-
-      leaves[i] = hasher.poseidon([bytes32(uint256(deposit.instance)), deposit.hash, bytes32(deposit.block)]);
+      args[3 + 0 * CHUNK_SIZE + i] = uint256(_events[i].instance);
+      args[3 + 1 * CHUNK_SIZE + i] = uint256(_events[i].hash);
+      args[3 + 2 * CHUNK_SIZE + i] = uint256(_events[i].block);
+      emit DepositData(_events[i].instance, _events[i].hash, _events[i].block, offset + i);
       delete deposits[offset + i];
-
-      emit DepositData(deposit.instance, deposit.hash, deposit.block, offset + i);
     }
 
-    lastProcessedDepositLeaf = offset + _deposits.length;
-    depositTree.bulkInsert(leaves);
+    require(treeUpdateVerifier.verifyProof(_proof, args), "Invalid deposit tree update proof");
+
+    depositRoot = _newRoot;
+    lastProcessedDepositLeaf = offset + CHUNK_SIZE;
   }
 
-  function updateWithdrawalTree(TreeLeaf[] calldata _withdrawals) public {
-    bytes32[] memory leaves = new bytes32[](_withdrawals.length);
+  function updateWithdrawalTree(
+    bytes calldata _proof,
+    bytes32 _previousRoot,
+    bytes32 _newRoot,
+    uint256 _pathIndices,
+    TreeLeaf[] calldata _events
+  ) public {
     uint256 offset = lastProcessedWithdrawalLeaf;
+    require(_events.length == CHUNK_SIZE, "Incorrect withdrawal array size");
+    require(_previousRoot == withdrawalRoot, "Incorrect withdrawal array size");
+    require(_pathIndices == offset >> CHUNK_TREE_HEIGHT, "Incorrect insert index");
 
-    for (uint256 i = 0; i < _withdrawals.length; i++) {
-      TreeLeaf memory withdrawal = _withdrawals[i];
-      bytes32 leafHash = keccak256(abi.encode(withdrawal.instance, withdrawal.hash, withdrawal.block));
+    uint256[3 + 3 * CHUNK_SIZE] memory args;
+    args[0] = uint256(_previousRoot);
+    args[1] = uint256(_newRoot);
+    args[2] = lastProcessedWithdrawalLeaf >> CHUNK_TREE_HEIGHT; // TODO
+    for (uint256 i = 0; i < CHUNK_SIZE; i++) {
+      bytes32 leafHash = keccak256(abi.encode(_events[i].instance, _events[i].hash, _events[i].block));
       require(withdrawals[offset + i] == leafHash, "Incorrect withdrawal");
-
-      leaves[i] = hasher.poseidon([bytes32(uint256(withdrawal.instance)), withdrawal.hash, bytes32(withdrawal.block)]);
+      args[3 + 0 * CHUNK_SIZE + i] = uint256(_events[i].instance);
+      args[3 + 1 * CHUNK_SIZE + i] = uint256(_events[i].hash);
+      args[3 + 2 * CHUNK_SIZE + i] = uint256(_events[i].block);
+      emit WithdrawalData(_events[i].instance, _events[i].hash, _events[i].block, offset + i);
       delete withdrawals[offset + i];
-
-      emit WithdrawalData(withdrawal.instance, withdrawal.hash, withdrawal.block, offset + i);
     }
 
-    lastProcessedWithdrawalLeaf = offset + _withdrawals.length;
-    withdrawalTree.bulkInsert(leaves);
+    require(treeUpdateVerifier.verifyProof(_proof, args), "Invalid withdrawal tree update proof");
+
+    withdrawalRoot = _newRoot;
+    lastProcessedWithdrawalLeaf = offset + CHUNK_SIZE;
   }
 
+  // todo store previous root
   function validateRoots(bytes32 _depositRoot, bytes32 _withdrawalRoot) public view {
-    require(depositTree.isKnownRoot(_depositRoot), "Incorrect deposit tree root");
-    require(withdrawalTree.isKnownRoot(_withdrawalRoot), "Incorrect withdrawal tree root");
-  }
-
-  function depositRoot() external view returns (bytes32) {
-    return depositTree.getLastRoot();
-  }
-
-  function withdrawalRoot() external view returns (bytes32) {
-    return withdrawalTree.getLastRoot();
+    require(depositRoot == _depositRoot, "Incorrect deposit tree root");
+    require(withdrawalRoot == _withdrawalRoot, "Incorrect withdrawal tree root");
   }
 
   function getRegisteredDeposits() external view returns (bytes32[] memory _deposits) {
@@ -124,6 +149,10 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     for (uint256 i = 0; i < count; i++) {
       _withdrawals[i] = withdrawals[lastProcessedWithdrawalLeaf + i];
     }
+  }
+
+  function setTornadoProxyContract(address _tornadoProxy) external onlyGovernance {
+    tornadoProxy = _tornadoProxy;
   }
 
   function blockNumber() public view virtual returns (uint256) {
