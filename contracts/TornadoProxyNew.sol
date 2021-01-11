@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity ^0.6.0;
+pragma experimental ABIEncoderV2;
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/math/Math.sol";
@@ -8,7 +10,7 @@ import "./interfaces/ITornadoInstance.sol";
 import "./interfaces/ITornadoTrees.sol";
 import "torn-token/contracts/ENS.sol";
 
-contract TornadoProxy is EnsResolve {
+contract TornadoProxyNew is EnsResolve {
   using SafeERC20 for IERC20;
 
   event EncryptedNote(address indexed sender, bytes encryptedNote);
@@ -16,28 +18,28 @@ contract TornadoProxy is EnsResolve {
   ITornadoTrees public immutable tornadoTrees;
   address public immutable governance;
 
-  mapping(ITornadoInstance => bool) public allowedInstances;
-  mapping(ITornadoInstance => bool) public miningInstances;
+  enum InstanceState { Disabled, Enabled, Mining }
+  mapping(ITornadoInstance => InstanceState) public instances;
   modifier onlyGovernance() {
     require(msg.sender == governance, "Not authorized");
     _;
   }
 
+  struct Instance {
+    bytes32 instance;
+    InstanceState state;
+  }
+
   constructor(
     bytes32 _tornadoTrees,
     bytes32 _governance,
-    bytes32[] memory _allowedInstances,
-    bytes32[] memory _miningInstances
+    Instance[] memory _instances
   ) public {
     tornadoTrees = ITornadoTrees(resolve(_tornadoTrees));
     governance = resolve(_governance);
 
-    for (uint256 i = 0; i < _allowedInstances.length; i++) {
-      allowedInstances[ITornadoInstance(resolve(_allowedInstances[i]))] = true;
-    }
-
-    for (uint256 i = 0; i < _miningInstances.length; i++) {
-      miningInstances[ITornadoInstance(resolve(_miningInstances[i]))] = true;
+    for (uint256 i = 0; i < _instances.length; i++) {
+      instances[ITornadoInstance(resolve(_instances[i].instance))] = _instances[i].state;
     }
   }
 
@@ -46,22 +48,13 @@ contract TornadoProxy is EnsResolve {
     bytes32 _commitment,
     bytes calldata _encryptedNote
   ) external payable {
-    require(allowedInstances[_tornado], "The instance is not supported");
+    require(instances[_tornado] != InstanceState.Disabled, "The instance is not supported");
 
     _tornado.deposit{ value: msg.value }(_commitment);
-    if (miningInstances[_tornado]) {
+    if (instances[_tornado] == InstanceState.Mining) {
       tornadoTrees.registerDeposit(address(_tornado), _commitment);
     }
     emit EncryptedNote(msg.sender, _encryptedNote);
-  }
-
-  function updateInstance(
-    ITornadoInstance _instance,
-    bool _allowed,
-    bool _mining
-  ) external onlyGovernance {
-    allowedInstances[_instance] = _allowed;
-    miningInstances[_instance] = _mining;
   }
 
   function withdraw(
@@ -74,12 +67,16 @@ contract TornadoProxy is EnsResolve {
     uint256 _fee,
     uint256 _refund
   ) external payable {
-    require(allowedInstances[_tornado], "The instance is not supported");
+    require(instances[_tornado] != InstanceState.Disabled, "The instance is not supported");
 
     _tornado.withdraw{ value: msg.value }(_proof, _root, _nullifierHash, _recipient, _relayer, _fee, _refund);
-    if (miningInstances[_tornado]) {
+    if (instances[_tornado] == InstanceState.Mining) {
       tornadoTrees.registerWithdrawal(address(_tornado), _nullifierHash);
     }
+  }
+
+  function updateInstance(ITornadoInstance _instance, InstanceState _state) external onlyGovernance {
+    instances[_instance] = _state;
   }
 
   /// @dev Method to claim junk and accidentally sent tokens
