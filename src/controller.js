@@ -13,6 +13,7 @@ const {
 const Account = require('./account')
 const MerkleTree = require('fixed-merkle-tree')
 const websnarkUtils = require('websnark/src/utils')
+const { stringifyBigInts } = require('snarkjs/src/stringifybigint')
 const buildGroth16 = require('websnark/src/groth16')
 
 const web3 = new Web3()
@@ -332,12 +333,12 @@ class Controller {
     }
 
     const oldRoot = tree.root()
-    const leaves = events.map((e) => poseidonHash([e.instance, e.hash, e.blockNumber]))
-    tree.batchInsert(leaves)
+    const leaves = events.map((e) => poseidonHash([e.instance, e.hash, e.block]))
+    tree.bulkInsert(leaves)
     const newRoot = tree.root()
     let { pathElements, pathIndices } = tree.path(tree.elements().length - 1)
-    pathElements = pathElements.slice(0, -batchHeight)
-    pathIndices = bitsToNumber(pathIndices.slice(0, -batchHeight))
+    pathElements = pathElements.slice(batchHeight)
+    pathIndices = bitsToNumber(pathIndices.slice(batchHeight))
 
     const input = {
       oldRoot,
@@ -349,6 +350,7 @@ class Controller {
       blocks: events.map((e) => e.block),
     }
 
+    console.log('input', stringifyBigInts(input))
     const proofData = await websnarkUtils.genWitnessAndProve(
       this.groth16,
       input,
@@ -357,16 +359,16 @@ class Controller {
     )
     const { proof } = websnarkUtils.toSolidityInput(proofData)
 
-    const args = {
-      oldRoot: toFixedHex(input.oldRoot),
-      newRoot: toFixedHex(input.newRoot),
-      pathIndices: toFixedHex(input.pathIndices),
-      events: events.map((e) => ({
+    const args = [
+      toFixedHex(input.oldRoot),
+      toFixedHex(input.newRoot),
+      toFixedHex(input.pathIndices),
+      events.map((e) => ({
         instance: toFixedHex(e.instance, 20),
         hash: toFixedHex(e.hash),
         block: toFixedHex(e.block),
       })),
-    }
+    ]
 
     return {
       proof,

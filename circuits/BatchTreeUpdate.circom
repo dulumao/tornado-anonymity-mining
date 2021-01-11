@@ -56,7 +56,9 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
 
 // zeroLeaf = keccak256("tornado") % FIELD_SIZE
 // zeroBatchLeaf is poseidon(zeroLeaf, zeroLeaf) (batchLevels - 1) times
-component main = BatchTreeUpdate(20, 7, 7106632500398372645836762576259242192202230138343760620842346283595225511823)
+component main = BatchTreeUpdate(20, 6, 7106632500398372645836762576259242192202230138343760620842346283595225511823)
+
+// for mainnet use 20, 7, 17278668323652664881420209773995988768195998574629614593395162463145689805534
 
 /*
 zeros of n-th order:

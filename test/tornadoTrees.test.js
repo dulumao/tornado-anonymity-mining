@@ -1,18 +1,22 @@
 /* global artifacts, web3, contract */
 require('chai').use(require('bn-chai')(web3.utils.BN)).use(require('chai-as-promised')).should()
-
+const fs = require('fs')
 const { takeSnapshot, revertSnapshot } = require('../scripts/ganacheHelper')
 const Note = require('../src/note')
+const Controller = require('../src/controller')
 const TornadoTrees = artifacts.require('TornadoTreesMock')
-const OwnableMerkleTree = artifacts.require('OwnableMerkleTree')
-const Hasher2 = artifacts.require('Hasher2')
-const Hasher3 = artifacts.require('Hasher3')
-const { toFixedHex, poseidonHash2, poseidonHash } = require('../src/utils')
+const BatchTreeUpdateVerifier = artifacts.require('BatchTreeUpdateVerifier')
+const provingKeys = {
+  batchTreeUpdateCircuit: require('../build/circuits/BatchTreeUpdate.json'),
+  batchTreeUpdateProvingKey: fs.readFileSync('./build/circuits/BatchTreeUpdate_proving_key.bin').buffer,
+}
+
+const { toFixedHex, poseidonHash2 } = require('../src/utils')
 const MerkleTree = require('fixed-merkle-tree')
 
-async function registerDeposit(note, tornadoTrees) {
+async function registerDeposit(note, tornadoTrees, from) {
   await tornadoTrees.setBlockNumber(note.depositBlock)
-  await tornadoTrees.registerDeposit(note.instance, toFixedHex(note.commitment))
+  await tornadoTrees.registerDeposit(note.instance, toFixedHex(note.commitment), { from })
   return {
     instance: note.instance,
     hash: toFixedHex(note.commitment),
@@ -20,9 +24,9 @@ async function registerDeposit(note, tornadoTrees) {
   }
 }
 
-async function registerWithdrawal(note, tornadoTrees) {
+async function registerWithdrawal(note, tornadoTrees, from) {
   await tornadoTrees.setBlockNumber(note.withdrawalBlock)
-  await tornadoTrees.registerWithdrawal(note.instance, toFixedHex(note.nullifierHash))
+  await tornadoTrees.registerWithdrawal(note.instance, toFixedHex(note.nullifierHash), { from })
   return {
     instance: note.instance,
     hash: toFixedHex(note.nullifierHash),
@@ -30,109 +34,92 @@ async function registerWithdrawal(note, tornadoTrees) {
   }
 }
 
-const levels = 16
-contract('TornadoTrees', (accounts) => {
+const levels = 20
+const CHUNK_TREE_HEIGHT = 6
+contract.only('TornadoTrees', (accounts) => {
   let tornadoTrees
+  let verifier
+  let controller
   let snapshotId
-  let hasher2
-  let hasher3
-  let operator = accounts[0]
-  let depositTree
-  let withdrawalTree
-  const instances = {
-    one: '0x0000000000000000000000000000000000000001',
-    two: '0x0000000000000000000000000000000000000002',
-    three: '0x0000000000000000000000000000000000000003',
-    four: '0x0000000000000000000000000000000000000004',
-  }
-  const note1 = new Note({
-    instance: instances.one,
-    depositBlock: 10,
-    withdrawalBlock: 10 + 4 * 60 * 24,
-  })
-  const note2 = new Note({
-    instance: instances.two,
-    depositBlock: 10,
-    withdrawalBlock: 10 + 2 * 4 * 60 * 24,
-  })
-  const note3 = new Note({
-    instance: instances.three,
-    depositBlock: 10,
-    withdrawalBlock: 10 + 3 * 4 * 60 * 24,
-  })
+  let tornadoProxy = accounts[1]
+  let operator = accounts[2]
+
+  const instances = [
+    '0x0000000000000000000000000000000000000001',
+    '0x0000000000000000000000000000000000000002',
+    '0x0000000000000000000000000000000000000003',
+    '0x0000000000000000000000000000000000000004',
+  ]
+
+  const notes = []
 
   before(async () => {
-    hasher2 = await Hasher2.new()
-    hasher3 = await Hasher3.new()
-    tornadoTrees = await TornadoTrees.new(operator, hasher2.address, hasher3.address, levels)
-    depositTree = await OwnableMerkleTree.at(await tornadoTrees.depositTree())
-    withdrawalTree = await OwnableMerkleTree.at(await tornadoTrees.withdrawalTree())
+    const emptyTree = new MerkleTree(levels, [], { hashFunction: poseidonHash2 })
+    verifier = await BatchTreeUpdateVerifier.new()
+    tornadoTrees = await TornadoTrees.new(
+      operator,
+      tornadoProxy,
+      verifier.address,
+      toFixedHex(emptyTree.root()),
+      toFixedHex(emptyTree.root()),
+    )
+
+    for (let i = 0; i < 2 ** CHUNK_TREE_HEIGHT; i++) {
+      console.log('i', i)
+      notes[i] = new Note({
+        instance: instances[i % instances.length],
+        depositBlock: 1 + i,
+        withdrawalBlock: 2 + i + i * 4 * 60 * 24,
+      })
+      await registerDeposit(notes[i], tornadoTrees, tornadoProxy)
+      await registerWithdrawal(notes[i], tornadoTrees, tornadoProxy)
+    }
+
+    controller = new Controller({
+      contract: '',
+      tornadoTreesContract: tornadoTrees,
+      merkleTreeHeight: levels,
+      provingKeys,
+    })
+    await controller.init()
+
     snapshotId = await takeSnapshot()
   })
 
-  describe('#constructor', () => {
-    it('should be initialized', async () => {
-      const owner = await tornadoTrees.tornadoProxy()
-      owner.should.be.equal(operator)
-    })
-  })
-
-  describe('#updateRoots', () => {
-    it('should work for many instances', async () => {
-      const note1DepositLeaf = await registerDeposit(note1, tornadoTrees)
-      const note2DepositLeaf = await registerDeposit(note2, tornadoTrees)
-
-      const note2WithdrawalLeaf = await registerWithdrawal(note2, tornadoTrees)
-
-      const note3DepositLeaf = await registerDeposit(note3, tornadoTrees)
-      const note3WithdrawalLeaf = await registerWithdrawal(note3, tornadoTrees)
-
-      await tornadoTrees.updateRoots(
-        [note1DepositLeaf, note2DepositLeaf, note3DepositLeaf],
-        [note2WithdrawalLeaf, note3WithdrawalLeaf],
-      )
-
-      const localDepositTree = new MerkleTree(levels, [], {
-        hashFunction: poseidonHash2,
-      })
-
-      localDepositTree.insert(poseidonHash([note1.instance, note1.commitment, note1.depositBlock]))
-      localDepositTree.insert(poseidonHash([note2.instance, note2.commitment, note2.depositBlock]))
-      localDepositTree.insert(poseidonHash([note3.instance, note3.commitment, note3.depositBlock]))
-
-      const lastDepositRoot = await depositTree.getLastRoot()
-      toFixedHex(localDepositTree.root()).should.be.equal(lastDepositRoot.toString())
-
-      const localWithdrawalTree = new MerkleTree(levels, [], {
-        hashFunction: poseidonHash2,
-      })
-      localWithdrawalTree.insert(poseidonHash([note2.instance, note2.nullifierHash, note2.withdrawalBlock]))
-      localWithdrawalTree.insert(poseidonHash([note3.instance, note3.nullifierHash, note3.withdrawalBlock]))
-
-      const lastWithdrawalRoot = await withdrawalTree.getLastRoot()
-      toFixedHex(localWithdrawalTree.root()).should.be.equal(lastWithdrawalRoot.toString())
-    })
-    it('should work for empty arrays', async () => {
-      await tornadoTrees.updateRoots([], [])
-    })
-  })
-
-  describe('#getRegisteredDeposits', () => {
+  describe('#updateDepositTree', () => {
     it('should work', async () => {
-      const note1DepositLeaf = await registerDeposit(note1, tornadoTrees)
-      let res = await tornadoTrees.getRegisteredDeposits()
-      res.length.should.be.equal(1)
-      // res[0].should.be.true
-      await tornadoTrees.updateRoots([note1DepositLeaf], [])
+      const emptyTree = new MerkleTree(levels, [], { hashFunction: poseidonHash2 })
+      const events = notes.map((note) => ({
+        instance: note.instance,
+        hash: note.commitment,
+        block: note.depositBlock,
+      }))
+      const data = await controller.batchTreeUpdate(emptyTree, events)
+      console.log('data', data)
+      console.log('events', data.args[3])
+      const recipet = await tornadoTrees.updateDepositTree(data.proof, ...data.args)
+      console.log('recipet', recipet)
 
-      res = await tornadoTrees.getRegisteredDeposits()
-      res.length.should.be.equal(0)
-
-      await registerDeposit(note2, tornadoTrees)
-      res = await tornadoTrees.getRegisteredDeposits()
-      // res[0].should.be.true
+      // todo validation
     })
   })
+
+  // describe('#getRegisteredDeposits', () => {
+  //   it('should work', async () => {
+  //     const note1DepositLeaf = await registerDeposit(note1, tornadoTrees)
+  //     let res = await tornadoTrees.getRegisteredDeposits()
+  //     res.length.should.be.equal(1)
+  //     // res[0].should.be.true
+  //     await tornadoTrees.updateRoots([note1DepositLeaf], [])
+
+  //     res = await tornadoTrees.getRegisteredDeposits()
+  //     res.length.should.be.equal(0)
+
+  //     await registerDeposit(note2, tornadoTrees)
+  //     res = await tornadoTrees.getRegisteredDeposits()
+  //     // res[0].should.be.true
+  //   })
+  // })
 
   afterEach(async () => {
     await revertSnapshot(snapshotId.result)

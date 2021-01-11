@@ -10,11 +10,12 @@ contract TornadoTreesMock is TornadoTrees {
   uint256 public currentBlock;
 
   constructor(
+    bytes32 _governance,
     bytes32 _tornadoProxy,
-    bytes32 _hasher2,
-    bytes32 _hasher3,
-    uint32 _levels
-  ) public TornadoTrees(_tornadoProxy, _hasher2, _hasher3, _levels) {}
+    bytes32 _treeUpdateVerifier,
+    bytes32 _depositRoot,
+    bytes32 _withdrawalRoot
+  ) public TornadoTrees(_governance, _tornadoProxy, _treeUpdateVerifier, _depositRoot, _withdrawalRoot) {}
 
   function resolve(bytes32 _addr) public view override returns (address) {
     return address(uint160(uint256(_addr) >> (12 * 8)));
