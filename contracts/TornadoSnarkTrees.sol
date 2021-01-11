@@ -14,7 +14,7 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
   IVerifier public immutable treeUpdateVerifier;
 
   uint256 public constant CHUNK_TREE_HEIGHT = 7;
-  uint256 public constant CHUNK_SIZE = 2 ** CHUNK_TREE_HEIGHT;
+  uint256 public constant CHUNK_SIZE = 2**CHUNK_TREE_HEIGHT;
 
   bytes32[] public deposits;
   uint256 public lastProcessedDepositLeaf;

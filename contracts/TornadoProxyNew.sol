@@ -39,7 +39,7 @@ contract TornadoProxy is EnsResolve {
     for (uint256 i = 0; i < _miningInstances.length; i++) {
       miningInstances[ITornadoInstance(resolve(_miningInstances[i]))] = true;
     }
-}
+  }
 
   function deposit(
     ITornadoInstance _tornado,
@@ -55,7 +55,11 @@ contract TornadoProxy is EnsResolve {
     emit EncryptedNote(msg.sender, _encryptedNote);
   }
 
-  function updateInstance(ITornadoInstance _instance, bool _allowed, bool _mining) external onlyGovernance {
+  function updateInstance(
+    ITornadoInstance _instance,
+    bool _allowed,
+    bool _mining
+  ) external onlyGovernance {
     allowedInstances[_instance] = _allowed;
     miningInstances[_instance] = _mining;
   }
