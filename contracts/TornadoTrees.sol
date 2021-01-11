@@ -14,6 +14,7 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
   address public tornadoProxy;
   IVerifier public immutable treeUpdateVerifier;
 
+  // make sure CHUNK_TREE_HEIGHT has the same value in BatchTreeUpdate.circom and IVerifier.sol
   uint256 public constant CHUNK_TREE_HEIGHT = 7;
   uint256 public constant CHUNK_SIZE = 2**CHUNK_TREE_HEIGHT;
 
