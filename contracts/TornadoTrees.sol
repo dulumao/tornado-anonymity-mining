@@ -85,6 +85,9 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     for (uint256 i = 0; i < CHUNK_SIZE; i++) {
       bytes32 leafHash = keccak256(abi.encode(_events[i].instance, _events[i].hash, _events[i].block));
       require(deposits[offset + i] == leafHash, "Incorrect deposit");
+      require(uint256(_events[i].instance) < 2**160, "Instance out of range");
+      require(uint256(_events[i].hash) < 2**248, "Hash out of range");
+      require(uint256(_events[i].block) < 2**32, "Block out of range");
       args[3 + 0 * CHUNK_SIZE + i] = uint256(_events[i].instance);
       args[3 + 1 * CHUNK_SIZE + i] = uint256(_events[i].hash);
       args[3 + 2 * CHUNK_SIZE + i] = uint256(_events[i].block);
@@ -92,7 +95,8 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
       delete deposits[offset + i];
     }
 
-    require(treeUpdateVerifier.verifyProof(_proof, args), "Invalid deposit tree update proof");
+    bytes32 argsHash = sha256(abi.encode(args)) & 0x00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+    require(treeUpdateVerifier.verifyProof(_proof, [uint256(argsHash)]), "Invalid deposit tree update proof");
 
     depositRoot = _newRoot;
     lastProcessedDepositLeaf = offset + CHUNK_SIZE;
@@ -117,6 +121,9 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     for (uint256 i = 0; i < CHUNK_SIZE; i++) {
       bytes32 leafHash = keccak256(abi.encode(_events[i].instance, _events[i].hash, _events[i].block));
       require(withdrawals[offset + i] == leafHash, "Incorrect withdrawal");
+      require(uint256(_events[i].instance) < 2**160, "Instance out of range");
+      require(uint256(_events[i].hash) < 2**248, "Hash out of range");
+      require(uint256(_events[i].block) < 2**32, "Block out of range");
       args[3 + 0 * CHUNK_SIZE + i] = uint256(_events[i].instance);
       args[3 + 1 * CHUNK_SIZE + i] = uint256(_events[i].hash);
       args[3 + 2 * CHUNK_SIZE + i] = uint256(_events[i].block);
@@ -124,7 +131,8 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
       delete withdrawals[offset + i];
     }
 
-    require(treeUpdateVerifier.verifyProof(_proof, args), "Invalid withdrawal tree update proof");
+    bytes32 argsHash = sha256(abi.encode(args)) & 0x00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+    require(treeUpdateVerifier.verifyProof(_proof, [uint256(argsHash)]), "Invalid deposit tree update proof");
 
     withdrawalRoot = _newRoot;
     lastProcessedWithdrawalLeaf = offset + CHUNK_SIZE;
