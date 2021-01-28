@@ -31,10 +31,28 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
   signal private input blocks[nLeaves];
 
   var bitsPerLeaf = 160 + 248 + 32;
-  component hasher = Sha256(nLeaves * bitsPerLeaf);
+  var header = 248 + 248 + levels;
+  component hasher = Sha256(header + nLeaves * bitsPerLeaf);
+
+  component bitsOldRoot[254] = Num2Bits(254);
+  component bitsNewRoot[254] = Num2Bits(254);
+  component bitsPathIndices[levels] = Num2Bits(levels);
   component bitsInstance[nLeaves];
   component bitsHash[nLeaves];
   component bitsBlock[nLeaves];
+  
+  bitsOldRoot.in <== oldRoot;
+  bitsNewRoot.in <== newRoot;
+  bitsPathIndices.in <== pathIndices;
+  for(var i = 0; i < 254; i++) {
+      hasher.in[i] <== bitsOldRoot.out[i];
+  }
+  for(var i = 0; i < 254; i++) {
+    hasher.in[i + 254] <== bitsNewRoot.out[i];
+  }
+  for(var i = 0; i < levels; i++) {
+    hasher.in[i + 508] <== bitsPathIndices.out[i];
+  }
   for(var leaf = 0; leaf < nLeaves; leaf++) {
     bitsInstance[leaf] = Num2Bits(160);
     bitsHash[leaf] = Num2Bits(248);
@@ -43,13 +61,13 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
     bitsHash[leaf].in <== hashes[leaf];
     bitsBlock[leaf].in <== blocks[leaf];
     for(var i = 0; i < 160; i++) {
-      hasher.in[leaf * bitsPerLeaf + i] <== bitsInstance[leaf].out[i];
+      hasher.in[header + leaf * bitsPerLeaf + i] <== bitsInstance[leaf].out[i];
     }
     for(var i = 0; i < 248; i++) {
-      hasher.in[leaf * bitsPerLeaf + i + 160] <== bitsHash[leaf].out[i];
+      hasher.in[header + leaf * bitsPerLeaf + i + 160] <== bitsHash[leaf].out[i];
     }
     for(var i = 0; i < 32; i++) {
-      hasher.in[leaf * bitsPerLeaf + i + 308] <== bitsBlock[leaf].out[i];
+      hasher.in[header + leaf * bitsPerLeaf + i + 308] <== bitsBlock[leaf].out[i];
     }
   }
   component b2n = Bits2Num(248);
