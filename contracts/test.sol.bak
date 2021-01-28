@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.6.0;
+pragma experimental ABIEncoderV2;
+
+contract test {
+  uint256 constant PRIME_Q = 21888242871839275222246405745257275088696311157297823662689037894645226208583;
+
+  struct G1Point {
+    uint256 X;
+    uint256 Y;
+  }
+
+  // Encoding of field elements is: X[0] * z + X[1]
+  struct G2Point {
+    uint256[2] X;
+    uint256[2] Y;
+  }
+
+  /*
+   * @return r the sum of two points of G1
+   */
+  function plus(
+    G1Point memory p1,
+    G1Point memory p2
+  ) internal view returns (G1Point memory r) {
+    uint256[4] memory input = [
+      p1.X, p1.Y,
+      p2.X, p2.Y
+    ];
+    bool success;
+
+    // solium-disable-next-line security/no-inline-assembly
+    assembly {
+      success := staticcall(sub(gas(), 2000), 6, input, 0xc0, r, 0x60)
+    // Use "invalid" to make gas estimation work
+      switch success case 0 { invalid() }
+    }
+
+    require(success, "pairing-add-failed");
+  }
+
+  function plus1(
+    G1Point memory p1,
+    G1Point memory p2
+  ) internal view returns (G1Point memory) {
+    (bool success, bytes memory out) = address(2).staticcall(abi.encode([p1, p2]));
+    require(success, "pairing-add-failed");
+    return abi.decode(out, (G1Point));
+  }
+
+//  function plus1(
+//    G1Point memory p1,
+//    G1Point memory p2
+//  ) internal view returns (G1Point memory) {
+//    (bool success, bytes memory out) = address(2).staticcall(abi.encode([p1.X, p1.Y, p2.X, p2.Y]));
+//    require(success, "pairing-add-failed");
+//    uint[2] memory out2 = abi.decode(out, (uint[2]));
+//    return G1Point(out2[0], out2[1]);
+//  }
+
+  /*
+   * @return r the product of a point on G1 and a scalar, i.e.
+   *         p == p.scalarMul(1) and p.plus(p) == p.scalarMul(2) for all
+   *         points p.
+   */
+  function scalarMul(G1Point memory p, uint256 s) internal view returns (G1Point memory r) {
+    uint256[3] memory input = [p.X, p.Y, s];
+    bool success;
+
+    // solium-disable-next-line security/no-inline-assembly
+    assembly {
+      success := staticcall(sub(gas(), 2000), 7, input, 0x80, r, 0x60)
+    // Use "invalid" to make gas estimation work
+      switch success case 0 { invalid() }
+    }
+
+    require(success, "pairing-mul-failed");
+  }
+
+  function scalarMul2(G1Point memory p, uint256 s) internal view returns (G1Point memory) {
+    (bool success, bytes memory out) = address(7).staticcall(abi.encode([p.X, p.Y, s]));
+    require(success, "pairing-mul-failed");
+    return abi.decode(out, (G1Point));
+  }
+
+  /* @return The result of computing the pairing check
+   *         e(p1[0], p2[0]) *  .... * e(p1[n], p2[n]) == 1
+   *         For example,
+   *         pairing([P1(), P1().negate()], [P2(), P2()]) should return true.
+   */
+  function pairing(
+    G1Point memory a1,
+    G2Point memory a2,
+    G1Point memory b1,
+    G2Point memory b2,
+    G1Point memory c1,
+    G2Point memory c2,
+    G1Point memory d1,
+    G2Point memory d2
+  ) internal view returns (bool) {
+    uint256[24] memory input = [
+      a1.X, a1.Y, a2.X[0], a2.X[1], a2.Y[0], a2.Y[1],
+      b1.X, b1.Y, b2.X[0], b2.X[1], b2.Y[0], b2.Y[1],
+      c1.X, c1.Y, c2.X[0], c2.X[1], c2.Y[0], c2.Y[1],
+      d1.X, d1.Y, d2.X[0], d2.X[1], d2.Y[0], d2.Y[1]
+    ];
+    uint256[1] memory out;
+    bool success;
+
+    // solium-disable-next-line security/no-inline-assembly
+    assembly {
+      success := staticcall(sub(gas(), 2000), 8, input, mul(24, 0x20), out, 0x20)
+    // Use "invalid" to make gas estimation work
+      switch success case 0 { invalid() }
+    }
+
+    require(success, "pairing-opcode-failed");
+    return out[0] != 0;
+  }
+
+  function pairing2(
+    G1Point memory a1,
+    G2Point memory a2,
+    G1Point memory b1,
+    G2Point memory b2,
+    G1Point memory c1,
+    G2Point memory c2,
+    G1Point memory d1,
+    G2Point memory d2
+  ) internal view returns (bool) {
+    (bool success, bytes memory out) = address(8).staticcall(abi.encode((a1, a2, b1, b2, c1, c2, d1, d2)));
+    require(success, "pairing-opcode-failed");
+    return abi.decode(out, (bool));
+  }
+
+  function test1() public returns (bool) {
+    G1Point memory p1 = G1Point(5758411448737867940264833043412238385995903355105650973681683314450915461429, 12247486135596520814025666699276703569777388012852778253909785381516049801813);
+    G1Point memory p2 = G1Point(18207285950494097579084526142912750953062648953909965590535656728418325369980, 2837951866743201795901709087334773783206407261972901842987105496052948195552);
+    G1Point memory p3 = plus(p1, p2);
+    G1Point memory p4 = plus(p1, p2);
+    require(p3.X == p4.X && p3.Y == p4.Y, "epic fail");
+    return true;
+//    vk.alfa1 = G1Point(uint256(5758411448737867940264833043412238385995903355105650973681683314450915461429), uint256(12247486135596520814025666699276703569777388012852778253909785381516049801813));
+//    vk.beta2 = G2Point([uint256(6828477704769851147714792612391984017368680858852033541386847068016281403810), uint256(17068151640038492179164881062358481098084235510284520567767068967133593085919)], [uint256(16752923850052950478397906505653629920626893744462600099748596037494540253123), uint256(16992129808218568944969973413570863675665494900560258579422077358221998995545)]);
+//    vk.gamma2 = G2Point([uint256(9782825478116585783904812957450156957987184695997835040613677142420220980818), uint256(1077010142876596015805711915276809166069126786970768425453086840226931116173)], [uint256(2219186320207255715999810230325416724500278536379480849588577720523093944228), uint256(4538484421572947277346153443646265094281190031059249127078263465472226891160)]);
+//    vk.delta2 = G2Point([uint256(9885902818972853333830220586403104964772240056569581545542716497602457847438), uint256(16037539556722013726622768404719738512313195490523205988563606378759530604785)], [uint256(17298598948011290074075850409385496074340773726506419236154691991282277471751), uint256(14776906199856821915766940979942995525853367604341687293050189175527636460743)]);
+//    vk.IC[0] = G1Point(uint256(18207285950494097579084526142912750953062648953909965590535656728418325369980), uint256(2837951866743201795901709087334773783206407261972901842987105496052948195552));
+//    vk.IC[1] = G1Point(uint256(17350659016534187086958960124597399915200649677241022655472808210364763698720), uint256(15422742315270729368321074391959853999191906842779253424396541251289242663345));
+//    vk.IC[2] = G1Point(uint256(11907291096071495355325990948550995558439270939391670831326724954661675377281), uint256(11900859008196012319619768504253762634404444972135757595484480469616969261241));
+//    vk.IC[3] = G1Point(uint256(7226255504486777285240148747413603388336351331210668035349091067480980973241), uint256(5186437534114691982451045585528298400507732842552957369516442370581016930280));
+//    vk.IC[4] = G1Point(uint256(17234944412593037778582785093509107189510597182261559276452627327792130475989), uint256(12138462087396513594256215013156568823424683143425022492598107298297170966016));
+//    vk.IC[5] = G1Point(uint256(9118698997832890510279232711804317021618368237190684699296048257772394708672), uint256(13787268551862251061331236913400312266620237676389032924720113580470844852034));
+//    vk.IC[6] = G1Point(uint256(3946050826547149167485416205009162689658003161697309255005763995729376406464), uint256(9064140895229377828480439199077868431385979116882025903869184125516197816308));
+//    vk.IC[7] = G1Point(uint256(10979870796700935528593980822566843612653308245145995947092230339692470428869), uint256(1353832169237910206719733106072467372495503584653027201609116860070163881049));
+  }
+
+
+}

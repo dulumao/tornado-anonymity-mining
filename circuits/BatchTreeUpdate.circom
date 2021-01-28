@@ -30,28 +30,31 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
   signal private input hashes[nLeaves];
   signal private input blocks[nLeaves];
 
-  var bitsPerLeaf = 3 * (160 + 248 + 32);
+  var bitsPerLeaf = 160 + 248 + 32;
   component hasher = Sha256(nLeaves * bitsPerLeaf);
+  component bitsInstance[nLeaves];
+  component bitsHash[nLeaves];
+  component bitsBlock[nLeaves];
   for(var leaf = 0; leaf < nLeaves; leaf++) {
-    component bitsInstance = Num2Bits(160);
-    component bitsHash = Num2Bits(248);
-    component bitsBlock = Num2Bits(32);
-    bitsInstance.in <== instances[leaf];
-    bitsHash.in <== hashes[leaf];
-    bitsBlock.in <== blocks[leaf];
+    bitsInstance[leaf] = Num2Bits(160);
+    bitsHash[leaf] = Num2Bits(248);
+    bitsBlock[leaf] = Num2Bits(32);
+    bitsInstance[leaf].in <== instances[leaf];
+    bitsHash[leaf].in <== hashes[leaf];
+    bitsBlock[leaf].in <== blocks[leaf];
     for(var i = 0; i < 160; i++) {
-      hasher[leaf * bitsPerLeaf + i] = bitsInstance.out[i];
+      hasher.in[leaf * bitsPerLeaf + i] <== bitsInstance[leaf].out[i];
     }
     for(var i = 0; i < 248; i++) {
-      hasher[leaf * bitsPerLeaf + i + 160] = bitsHash.out[i];
+      hasher.in[leaf * bitsPerLeaf + i + 160] <== bitsHash[leaf].out[i];
     }
     for(var i = 0; i < 32; i++) {
-      hasher[leaf * bitsPerLeaf + i + 308] = bitsBlock.out[i];
+      hasher.in[leaf * bitsPerLeaf + i + 308] <== bitsBlock[leaf].out[i];
     }
   }
   component b2n = Bits2Num(248);
-  for (i=0; i<248; i++) {
-      b2n.in[i] <== hasher.out[255 - i];
+  for (var i = 0; i < 248; i++) {
+      b2n.in[i] <== hasher.out[i];
   }
   argsHash === b2n.out;
 
@@ -64,8 +67,7 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
   }
 
   component layers[batchLevels];
-  // level var wraps around 0
-  for(var level = batchLevels - 1; level < batchLevels; level--) {
+  for(var level = batchLevels - 1; level >= 0; level--) {
     layers[level] = TreeLayer(level);
     for(var i = 0; i < (1 << (level + 1)); i++) {
       layers[level].ins[i] <== level == batchLevels - 1 ? leaves[i].out : layers[level + 1].outs[i];
@@ -84,7 +86,7 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
 
 // zeroLeaf = keccak256("tornado") % FIELD_SIZE
 // zeroBatchLeaf is poseidon(zeroLeaf, zeroLeaf) (batchLevels - 1) times
-component main = BatchTreeUpdate(20, 6, 7106632500398372645836762576259242192202230138343760620842346283595225511823)
+component main = BatchTreeUpdate(20, 2, 21572503925325825116380792768937986743990254033176521064707045559165336555197)
 
 // for mainnet use 20, 7, 17278668323652664881420209773995988768195998574629614593395162463145689805534
 

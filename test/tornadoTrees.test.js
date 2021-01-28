@@ -35,7 +35,7 @@ async function registerWithdrawal(note, tornadoTrees, from) {
 }
 
 const levels = 20
-const CHUNK_TREE_HEIGHT = 6
+const CHUNK_TREE_HEIGHT = 2
 contract.only('TornadoTrees', (accounts) => {
   let tornadoTrees
   let verifier
