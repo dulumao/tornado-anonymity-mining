@@ -82,15 +82,15 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
     require(_data.events.length == CHUNK_SIZE, "Incorrect deposit array size");
     require(_data.oldRoot == depositRoot, "Incorrect deposit array size");
     require(_data.pathIndices == offset >> CHUNK_TREE_HEIGHT, "Incorrect insert index");
-    require(uint256(_data.oldRoot) < SNARK_FIELD, "Previous root out of range");
+    require(uint256(_data.oldRoot) < SNARK_FIELD, "Previous root out of range"); // optional
     require(uint256(_data.newRoot) < SNARK_FIELD, "Rew root out of range");
-    require(_data.pathIndices < 256, "Path indices out of range");
+    require(_data.pathIndices < 256, "Path indices out of range"); // optional
     for (uint256 i = 0; i < CHUNK_SIZE; i++) {
       bytes32 leafHash = keccak256(abi.encode(_data.events[i].instance, _data.events[i].hash, _data.events[i].block));
       require(leafHash == deposits[offset + i], "Incorrect deposit");
-      require(uint256(_data.events[i].instance) < 2**160, "Instance out of range");
+      require(uint256(_data.events[i].instance) < 2**160, "Instance out of range"); // optional
       require(uint256(_data.events[i].hash) < SNARK_FIELD, "Hash out of range");
-      require(uint256(_data.events[i].block) < 2**32, "Block out of range");
+      require(uint256(_data.events[i].block) < 2**32, "Block out of range"); // optional
 
       emit DepositData(_data.events[i].instance, _data.events[i].hash, _data.events[i].block, offset + i);
       delete deposits[offset + i];
