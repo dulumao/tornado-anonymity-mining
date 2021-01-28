@@ -19,7 +19,8 @@ function hashInputs(input) {
   }
 
   const hash = sha.getHash('HEX')
-  const result = toBN(hash).mod(toBN('21888242871839275222246405745257275088548364400416034343698204186575808495617')).toString()
+  console.log('raw hash', hash)
+  const result = toBN(hash).mod(toBN('21888242871839275222246405745257275088548364400416034343698204186575808495617')).toString('hex')
   return result
 }
 
@@ -52,5 +53,6 @@ console.log(input)
 
 const hash = hashInputs(input)
 console.log('hash: ', hash)
-input.argsHash = hash
+//delete input.pathElements
+input.argsHash = '0x' + hash
 fs.writeFileSync('input.json', JSON.stringify(input, null, 2))

@@ -1,6 +1,5 @@
 include "../node_modules/circomlib/circuits/poseidon.circom";
 include "../node_modules/circomlib/circuits/bitify.circom";
-include "../node_modules/circomlib/circuits/sha256/sha256.circom";
 include "./MerkleTreeUpdater.circom";
 include "./Utils.circom";
 
@@ -42,7 +41,7 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
     argsHasher.hashes[i] <== hashes[i];
     argsHasher.blocks[i] <== blocks[i];
   }
-  argsHasher.out === argsHash;
+  argsHash === argsHasher.out;
 
   // Compute hashes of all leaves
   component leaves[nLeaves];

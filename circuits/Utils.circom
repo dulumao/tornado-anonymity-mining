@@ -1,5 +1,6 @@
 include "../node_modules/circomlib/circuits/bitify.circom";
 include "../node_modules/circomlib/circuits/pedersen.circom";
+include "../node_modules/circomlib/circuits/sha256/sha256.circom";
 
 // computes Pedersen(nullifier + secret)
 template TornadoCommitmentHasher() {
@@ -64,18 +65,18 @@ template TreeUpdateArgsHasher(nLeaves) {
         bitsHash[leaf].in <== hashes[leaf];
         bitsBlock[leaf].in <== blocks[leaf];
         for(var i = 0; i < 160; i++) {
-        hasher.in[header + leaf * bitsPerLeaf + i] <== bitsInstance[leaf].out[159 - i];
+            hasher.in[header + leaf * bitsPerLeaf + i] <== bitsInstance[leaf].out[159 - i];
         }
         for(var i = 0; i < 256; i++) {
-        hasher.in[header + leaf * bitsPerLeaf + i + 160] <== bitsHash[leaf].out[255 - i];
+            hasher.in[header + leaf * bitsPerLeaf + i + 160] <== bitsHash[leaf].out[255 - i];
         }
         for(var i = 0; i < 32; i++) {
-        hasher.in[header + leaf * bitsPerLeaf + i + 416] <== bitsBlock[leaf].out[31 - i];
+            hasher.in[header + leaf * bitsPerLeaf + i + 416] <== bitsBlock[leaf].out[31 - i];
         }
     }
     component b2n = Bits2Num(256);
     for (var i = 0; i < 256; i++) {
-        b2n.in[i] <== hasher.out[i];
+        b2n.in[i] <== hasher.out[255 - i];
     }
     out <== b2n.out;
 }
