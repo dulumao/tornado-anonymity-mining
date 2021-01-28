@@ -1,3 +1,4 @@
 *.r1cs
 *.wasm
 *.json
+*.params

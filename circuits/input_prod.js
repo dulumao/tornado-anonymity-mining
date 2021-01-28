@@ -1,9 +1,9 @@
 const fs = require('fs')
-const jsSHA = require("jssha")
+const jsSHA = require('jssha')
 const { toBN } = require('web3-utils')
 
 function hashInputs(input) {
-  const sha = new jsSHA("SHA-256", "ARRAYBUFFER")
+  const sha = new jsSHA('SHA-256', 'ARRAYBUFFER')
   sha.update(toBN(input.oldRoot).toBuffer('be', 32))
   sha.update(toBN(input.newRoot).toBuffer('be', 32))
   sha.update(toBN(input.pathIndices).toBuffer('be', 1))
@@ -14,7 +14,9 @@ function hashInputs(input) {
     sha.update(toBN(input.block).toBuffer('be', 4))
   }
 
-  return sha.getHash("HEX")
+  const hash = sha.getHash('HEX')
+  const result = toBN(hash).mod(toBN('21888242871839275222246405745257275088548364400416034343698204186575808495617')).toString()
+  return result
 }
 
 const hash = hashInputs(require('./input_raw.json'))
