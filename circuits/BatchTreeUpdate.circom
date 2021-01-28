@@ -32,16 +32,16 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
 
   // Check that hash of arguments is correct
   // We compress arguments into a single hash to considerably reduce gas usage on chain
-  component argsHasher = TreeUpdateArgsHasher(nLeaves);
-  argsHasher.oldRoot <== oldRoot;
-  argsHasher.newRoot <== newRoot;
-  argsHasher.pathIndices <== pathIndices;
-  for(var i = 0; i < nLeaves; i++) {
-    argsHasher.instances[i] <== instances[i];
-    argsHasher.hashes[i] <== hashes[i];
-    argsHasher.blocks[i] <== blocks[i];
-  }
-  argsHash === argsHasher.out;
+  // component argsHasher = TreeUpdateArgsHasher(nLeaves);
+  // argsHasher.oldRoot <== oldRoot;
+  // argsHasher.newRoot <== newRoot;
+  // argsHasher.pathIndices <== pathIndices;
+  // for(var i = 0; i < nLeaves; i++) {
+  //   argsHasher.instances[i] <== instances[i];
+  //   argsHasher.hashes[i] <== hashes[i];
+  //   argsHasher.blocks[i] <== blocks[i];
+  // }
+  // argsHash === argsHasher.out;
 
   // Compute hashes of all leaves
   component leaves[nLeaves];
