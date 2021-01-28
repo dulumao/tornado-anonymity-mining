@@ -34,6 +34,24 @@ async function registerWithdrawal(note, tornadoTrees, from) {
   }
 }
 
+async function register(note, tornadoTrees, from) {
+  await tornadoTrees.register(
+    note.instance,
+    toFixedHex(note.commitment),
+    toFixedHex(note.nullifierHash),
+    note.depositBlock,
+    note.withdrawalBlock,
+    {
+      from,
+    },
+  )
+  return {
+    instance: note.instance,
+    hash: toFixedHex(note.nullifierHash),
+    block: toFixedHex(note.withdrawalBlock),
+  }
+}
+
 const levels = 20
 const CHUNK_TREE_HEIGHT = 2
 contract.only('TornadoTrees', (accounts) => {
@@ -41,8 +59,8 @@ contract.only('TornadoTrees', (accounts) => {
   let verifier
   let controller
   let snapshotId
-  let tornadoProxy = accounts[1]
-  let operator = accounts[2]
+  let tornadoProxy = accounts[0]
+  let operator = accounts[0]
 
   const instances = [
     '0x0000000000000000000000000000000000000001',
@@ -64,17 +82,6 @@ contract.only('TornadoTrees', (accounts) => {
       toFixedHex(emptyTree.root()),
     )
 
-    for (let i = 0; i < 2 ** CHUNK_TREE_HEIGHT; i++) {
-      console.log('i', i)
-      notes[i] = new Note({
-        instance: instances[i % instances.length],
-        depositBlock: 1 + i,
-        withdrawalBlock: 2 + i + i * 4 * 60 * 24,
-      })
-      await registerDeposit(notes[i], tornadoTrees, tornadoProxy)
-      await registerWithdrawal(notes[i], tornadoTrees, tornadoProxy)
-    }
-
     controller = new Controller({
       contract: '',
       tornadoTreesContract: tornadoTrees,
@@ -83,11 +90,21 @@ contract.only('TornadoTrees', (accounts) => {
     })
     await controller.init()
 
-    snapshotId = await takeSnapshot()
+    // snapshotId = await takeSnapshot()
   })
 
-  describe('#updateDepositTree', () => {
+  describe.only('#updateDepositTree', () => {
     it('should work', async () => {
+      for (let i = 0; i < 2 ** CHUNK_TREE_HEIGHT; i++) {
+        console.log('i', i)
+        notes[i] = new Note({
+          instance: instances[i % instances.length],
+          depositBlock: 1 + i,
+          withdrawalBlock: 2 + i + i * 4 * 60 * 24,
+        })
+        await register(notes[i], tornadoTrees, tornadoProxy)
+      }
+
       const emptyTree = new MerkleTree(levels, [], { hashFunction: poseidonHash2 })
       const events = notes.map((note) => ({
         instance: note.instance,
@@ -121,9 +138,9 @@ contract.only('TornadoTrees', (accounts) => {
   //   })
   // })
 
-  afterEach(async () => {
-    await revertSnapshot(snapshotId.result)
-    // eslint-disable-next-line require-atomic-updates
-    snapshotId = await takeSnapshot()
-  })
+  // afterEach(async () => {
+  //   await revertSnapshot(snapshotId.result)
+  //   // eslint-disable-next-line require-atomic-updates
+  //   snapshotId = await takeSnapshot()
+  // })
 })

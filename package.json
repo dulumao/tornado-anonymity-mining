@@ -51,6 +51,7 @@
     "circom_runtime": "^0.1.11",
     "circomlib": "^0.4.1",
     "decimal.js": "^10.2.0",
+    "dotenv": "^8.2.0",
     "eth-sig-util": "^2.5.3",
     "ffiasm": "^0.1.1",
     "fixed-merkle-tree": "^0.3.4",

@@ -28,4 +28,17 @@ contract TornadoTreesMock is TornadoTrees {
   function blockNumber() public view override returns (uint256) {
     return currentBlock == 0 ? block.number : currentBlock;
   }
+
+  function register(
+    address _instance,
+    bytes32 _commitment,
+    bytes32 _nullifier,
+    uint256 _depositBlockNumber,
+    uint256 _withdrawBlockNumber
+  ) public {
+    setBlockNumber(_depositBlockNumber);
+    deposits.push(keccak256(abi.encode(_instance, _commitment, blockNumber())));
+    setBlockNumber(_withdrawBlockNumber);
+    withdrawals.push(keccak256(abi.encode(_instance, _nullifier, blockNumber())));
+  }
 }
