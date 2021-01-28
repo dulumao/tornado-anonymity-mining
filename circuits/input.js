@@ -53,6 +53,5 @@ console.log(input)
 
 const hash = hashInputs(input)
 console.log('hash: ', hash)
-//delete input.pathElements
 input.argsHash = '0x' + hash
 fs.writeFileSync('input.json', JSON.stringify(input, null, 2))
