@@ -2,13 +2,14 @@ include "../node_modules/circomlib/circuits/poseidon.circom";
 include "../node_modules/circomlib/circuits/bitify.circom";
 include "../node_modules/circomlib/circuits/sha256/sha256.circom";
 include "./MerkleTreeUpdater.circom";
+include "./Utils.circom";
 
-template TreeLayer(width) {
-  signal input ins[1 << (width + 1)];
-  signal input outs[1 << width];
+template TreeLayer(height) {
+  signal input ins[1 << (height + 1)];
+  signal input outs[1 << height];
 
-  component hash[1 << width];
-  for(var i = 0; i < (1 << width); i++) {
+  component hash[1 << height];
+  for(var i = 0; i < (1 << height); i++) {
     hash[i] = HashLeftRight();
     hash[i].left <== ins[i * 2];
     hash[i].right <== ins[i * 2 + 1];
@@ -16,8 +17,8 @@ template TreeLayer(width) {
   }
 }
 
-// inserts a leaf batch into a tree
-// checks that tree previously contained zero leaves in the same position
+// Inserts a leaf batch into a tree
+// Checks that tree previously contained zero leaves in the same position
 template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
   var height = levels - batchLevels;
   var nLeaves = 1 << batchLevels;
@@ -30,52 +31,20 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
   signal private input hashes[nLeaves];
   signal private input blocks[nLeaves];
 
-  var bitsPerLeaf = 160 + 248 + 32;
-  var header = 248 + 248 + levels;
-  component hasher = Sha256(header + nLeaves * bitsPerLeaf);
+  // Check that hash of arguments is correct
+  // We compress arguments into a single hash to considerably reduce gas usage on chain
+  component argsHasher = TreeUpdateArgsHasher(nLeaves);
+  argsHasher.oldRoot <== oldRoot;
+  argsHasher.newRoot <== newRoot;
+  argsHasher.pathIndices <== pathIndices;
+  for(var i = 0; i < nLeaves; i++) {
+    argsHasher.instances[i] <== instances[i];
+    argsHasher.hashes[i] <== hashes[i];
+    argsHasher.blocks[i] <== blocks[i];
+  }
+  argsHasher.out === argsHash;
 
-  component bitsOldRoot[254] = Num2Bits(254);
-  component bitsNewRoot[254] = Num2Bits(254);
-  component bitsPathIndices[levels] = Num2Bits(levels);
-  component bitsInstance[nLeaves];
-  component bitsHash[nLeaves];
-  component bitsBlock[nLeaves];
-  
-  bitsOldRoot.in <== oldRoot;
-  bitsNewRoot.in <== newRoot;
-  bitsPathIndices.in <== pathIndices;
-  for(var i = 0; i < 254; i++) {
-      hasher.in[i] <== bitsOldRoot.out[i];
-  }
-  for(var i = 0; i < 254; i++) {
-    hasher.in[i + 254] <== bitsNewRoot.out[i];
-  }
-  for(var i = 0; i < levels; i++) {
-    hasher.in[i + 508] <== bitsPathIndices.out[i];
-  }
-  for(var leaf = 0; leaf < nLeaves; leaf++) {
-    bitsInstance[leaf] = Num2Bits(160);
-    bitsHash[leaf] = Num2Bits(248);
-    bitsBlock[leaf] = Num2Bits(32);
-    bitsInstance[leaf].in <== instances[leaf];
-    bitsHash[leaf].in <== hashes[leaf];
-    bitsBlock[leaf].in <== blocks[leaf];
-    for(var i = 0; i < 160; i++) {
-      hasher.in[header + leaf * bitsPerLeaf + i] <== bitsInstance[leaf].out[i];
-    }
-    for(var i = 0; i < 248; i++) {
-      hasher.in[header + leaf * bitsPerLeaf + i + 160] <== bitsHash[leaf].out[i];
-    }
-    for(var i = 0; i < 32; i++) {
-      hasher.in[header + leaf * bitsPerLeaf + i + 308] <== bitsBlock[leaf].out[i];
-    }
-  }
-  component b2n = Bits2Num(248);
-  for (var i = 0; i < 248; i++) {
-      b2n.in[i] <== hasher.out[i];
-  }
-  argsHash === b2n.out;
-
+  // Compute hashes of all leaves
   component leaves[nLeaves];
   for(var i = 0; i < nLeaves; i++) {
     leaves[i] = Poseidon(3);
@@ -84,6 +53,7 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
     leaves[i].inputs[2] <== blocks[i];
   }
 
+  // Compute batch subtree merkle root
   component layers[batchLevels];
   for(var level = batchLevels - 1; level >= 0; level--) {
     layers[level] = TreeLayer(level);
@@ -92,6 +62,7 @@ template BatchTreeUpdate(levels, batchLevels, zeroBatchLeaf) {
     }
   }
 
+  // Verify that batch subtree was inserted correctly
   component treeUpdater = MerkleTreeUpdater(height, zeroBatchLeaf);
   treeUpdater.oldRoot <== oldRoot;
   treeUpdater.newRoot <== newRoot;

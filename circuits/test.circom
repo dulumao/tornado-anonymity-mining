@@ -9,7 +9,7 @@ template test1() {
   component sha = Sha256(248);
   n2b.in <== in;
   for (var i = 0; i < 248; i++) {
-      sha.in[247 - i] <== n2b.out[i];
+      sha.in[i] <== n2b.out[247 - i];
   }
 
   component b2n = Bits2Num(248);

@@ -17,6 +17,7 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
   // make sure CHUNK_TREE_HEIGHT has the same value in BatchTreeUpdate.circom and IVerifier.sol
   uint256 public constant CHUNK_TREE_HEIGHT = 2;
   uint256 public constant CHUNK_SIZE = 2**CHUNK_TREE_HEIGHT;
+  uint256 public constant SNARK_FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
   bytes32[] public deposits;
   uint256 public lastProcessedDepositLeaf;
@@ -30,7 +31,14 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
   struct TreeLeaf {
     address instance;
     bytes32 hash;
-    uint256 block;
+    uint32 block;
+  }
+
+  struct Batch {
+    bytes32 oldRoot;
+    bytes32 newRoot;
+    uint8 pathIndices;
+    TreeLeaf[CHUNK_SIZE] events;
   }
 
   modifier onlyTornadoProxy {
@@ -68,37 +76,31 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
   // todo !!! ensure that during migration the tree is filled evenly
   function updateDepositTree(
     bytes calldata _proof,
-    bytes32 _previousRoot,
-    bytes32 _newRoot,
-    uint256 _pathIndices,
-    TreeLeaf[] calldata _events
+    Batch calldata _data
   ) public {
     uint256 offset = lastProcessedDepositLeaf;
-    require(_events.length == CHUNK_SIZE, "Incorrect deposit array size");
-    require(_previousRoot == depositRoot, "Incorrect deposit array size");
-    require(_pathIndices == offset >> CHUNK_TREE_HEIGHT, "Incorrect insert index");
+    require(_data.events.length == CHUNK_SIZE, "Incorrect deposit array size");
+    require(_data.oldRoot == depositRoot, "Incorrect deposit array size");
+    require(_data.pathIndices == offset >> CHUNK_TREE_HEIGHT, "Incorrect insert index");
 
-    uint256[3 + 3 * CHUNK_SIZE] memory args;
-    args[0] = uint256(_previousRoot);
-    args[1] = uint256(_newRoot);
-    args[2] = _pathIndices; // TODO
+    require(uint256(_data.oldRoot) < SNARK_FIELD, "_previousRoot out of range");
+    require(uint256(_data.newRoot) < SNARK_FIELD, "_newRoot out of range");
+    require(_data.pathIndices < 256, "_pathIndices out of range");
     for (uint256 i = 0; i < CHUNK_SIZE; i++) {
-      bytes32 leafHash = keccak256(abi.encode(_events[i].instance, _events[i].hash, _events[i].block));
-      require(deposits[offset + i] == leafHash, "Incorrect deposit");
-      require(uint256(_events[i].instance) < 2**160, "Instance out of range");
-      require(uint256(_events[i].hash) < 2**248, "Hash out of range");
-      require(uint256(_events[i].block) < 2**32, "Block out of range");
-      args[3 + 0 * CHUNK_SIZE + i] = uint256(_events[i].instance);
-      args[3 + 1 * CHUNK_SIZE + i] = uint256(_events[i].hash);
-      args[3 + 2 * CHUNK_SIZE + i] = uint256(_events[i].block);
-      emit DepositData(_events[i].instance, _events[i].hash, _events[i].block, offset + i);
+      bytes32 leafHash = keccak256(abi.encode(_data.events[i].instance, _data.events[i].hash, _data.events[i].block));
+      require(leafHash == deposits[offset + i], "Incorrect deposit");
+      require(uint256(_data.events[i].instance) < 2**160, "Instance out of range");
+      require(uint256(_data.events[i].hash) < SNARK_FIELD, "Hash out of range");
+      require(uint256(_data.events[i].block) < 2**32, "Block out of range");
+
+      emit DepositData(_data.events[i].instance, _data.events[i].hash, _data.events[i].block, offset + i);
       delete deposits[offset + i];
     }
 
-    bytes32 argsHash = sha256(abi.encode(args)) & 0x00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
-    require(treeUpdateVerifier.verifyProof(_proof, [uint256(argsHash)]), "Invalid deposit tree update proof");
+    uint256 argsHash = uint256(sha256(abi.encode(_data))) % SNARK_FIELD;
+    require(treeUpdateVerifier.verifyProof(_proof, [argsHash]), "Invalid deposit tree update proof");
 
-    depositRoot = _newRoot;
+    depositRoot = _data.newRoot;
     lastProcessedDepositLeaf = offset + CHUNK_SIZE;
   }
 
@@ -122,7 +124,7 @@ contract TornadoTrees is ITornadoTrees, EnsResolve {
       bytes32 leafHash = keccak256(abi.encode(_events[i].instance, _events[i].hash, _events[i].block));
       require(withdrawals[offset + i] == leafHash, "Incorrect withdrawal");
       require(uint256(_events[i].instance) < 2**160, "Instance out of range");
-      require(uint256(_events[i].hash) < 2**248, "Hash out of range");
+      require(uint256(_events[i].hash) < 2**254, "Hash out of range");
       require(uint256(_events[i].block) < 2**32, "Block out of range");
       args[3 + 0 * CHUNK_SIZE + i] = uint256(_events[i].instance);
       args[3 + 1 * CHUNK_SIZE + i] = uint256(_events[i].hash);
