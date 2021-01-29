@@ -5,7 +5,7 @@ include "./Utils.circom";
 
 template TreeLayer(height) {
   signal input ins[1 << (height + 1)];
-  signal input outs[1 << height];
+  signal output outs[1 << height];
 
   component hash[1 << height];
   for(var i = 0; i < (1 << height); i++) {
